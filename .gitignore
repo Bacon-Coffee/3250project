@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+.installed.cfg
+
+# Virtual env
+.venv/
+venv/
+env/
+.python-version
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Ruff / mypy
+.ruff_cache/
+.mypy_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 实验产物（图与 csv 会在 results/ 下重新生成，避免污染仓库历史）
+results/figures/*.png
+results/figures/*.pdf
+results/figures/*.svg
+results/csv/*.csv
+!results/figures/.gitkeep
+!results/csv/.gitkeep
+
+# 真实 trace（体积大，需手动下载到 data/bitbrains/）
+data/bitbrains/*.csv
+data/bitbrains/*.zip
+!data/bitbrains/.gitkeep
+
+# LaTeX
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.bbl
+paper/*.blg
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.synctex.gz
+paper/main.pdf
