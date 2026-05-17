@@ -1,0 +1,211 @@
+% ---------------------------------------------------------------------------
+% Classical scheduling theory and operating-systems textbooks
+% ---------------------------------------------------------------------------
+
+@book{silberschatz2018,
+  title     = {Operating System Concepts},
+  author    = {Silberschatz, Abraham and Galvin, Peter B. and Gagne, Greg},
+  edition   = {10},
+  publisher = {Wiley},
+  year      = {2018}
+}
+
+@book{tanenbaum2014,
+  title     = {Modern Operating Systems},
+  author    = {Tanenbaum, Andrew S. and Bos, Herbert},
+  edition   = {4},
+  publisher = {Pearson},
+  year      = {2014}
+}
+
+@book{clrs2009,
+  title     = {Introduction to Algorithms},
+  author    = {Cormen, Thomas H. and Leiserson, Charles E. and Rivest, Ronald L. and Stein, Clifford},
+  edition   = {3},
+  publisher = {MIT Press},
+  year      = {2009}
+}
+
+@article{jain1984,
+  title     = {A Quantitative Measure of Fairness and Discrimination for Resource Allocation in Shared Computer Systems},
+  author    = {Jain, Rajendra K. and Chiu, Dah-Ming W. and Hawe, William R.},
+  journal   = {DEC Research Report TR-301},
+  year      = {1984}
+}
+
+@article{coffman1968,
+  title     = {Analysis of a Time-Shared Computer System},
+  author    = {Coffman, Edward G. and Kleinrock, Leonard},
+  journal   = {Communications of the ACM},
+  volume    = {11},
+  number    = {2},
+  pages     = {89--96},
+  year      = {1968},
+  publisher = {ACM}
+}
+
+% ---------------------------------------------------------------------------
+% Fair-share / proportional-share scheduling, EEVDF foundations
+% ---------------------------------------------------------------------------
+
+@techreport{stoica1995,
+  title       = {Earliest Eligible Virtual Deadline First: A Flexible and Accurate Mechanism for Proportional Share Resource Allocation},
+  author      = {Stoica, Ion and Abdel-Wahab, Hussein and Jeffay, Kevin and Baruah, Sanjoy K. and Gehrke, Johannes E. and Plaxton, C. Greg},
+  institution = {Old Dominion University},
+  number      = {TR-95-22},
+  year        = {1995}
+}
+
+@inproceedings{waldspurger1994,
+  title     = {Lottery Scheduling: Flexible Proportional-Share Resource Management},
+  author    = {Waldspurger, Carl A. and Weihl, William E.},
+  booktitle = {Proceedings of the 1st USENIX Conference on Operating Systems Design and Implementation (OSDI)},
+  year      = {1994}
+}
+
+@article{nieh2003,
+  title     = {A Comparison of Three Proportional-Share {CPU} Schedulers in Handling Different Types of Loads},
+  author    = {Nieh, Jason and Vaill, Chris and Zhong, Hua},
+  journal   = {Software: Practice and Experience},
+  volume    = {33},
+  number    = {15},
+  pages     = {1457--1486},
+  year      = {2003},
+  publisher = {Wiley}
+}
+
+@inproceedings{duda1999,
+  title     = {Borrowed-Virtual-Time ({BVT}) Scheduling: Supporting Latency-Sensitive Threads in a General-Purpose Scheduler},
+  author    = {Duda, Kenneth J. and Cheriton, David R.},
+  booktitle = {Proceedings of the 17th ACM Symposium on Operating Systems Principles (SOSP)},
+  pages     = {261--276},
+  year      = {1999}
+}
+
+% ---------------------------------------------------------------------------
+% Linux scheduler papers / community references
+% ---------------------------------------------------------------------------
+
+@inproceedings{lozi2016,
+  title     = {The {Linux} Scheduler: A Decade of Wasted Cores},
+  author    = {Lozi, Jean-Pierre and Lepers, Baptiste and Funston, Justin and Gaud, Fabien and Qu\'ema, Vivien and Fedorova, Alexandra},
+  booktitle = {Proceedings of the 11th European Conference on Computer Systems (EuroSys)},
+  pages     = {1:1--1:16},
+  year      = {2016}
+}
+
+@misc{corbet_cfs_2007,
+  title     = {Schedulers: The Plot Thickens},
+  author    = {Corbet, Jonathan},
+  howpublished = {Linux Weekly News, \url{https://lwn.net/Articles/230501/}},
+  year      = {2007}
+}
+
+@misc{corbet_eevdf_2023,
+  title     = {An {EEVDF} {CPU} Scheduler for {Linux}},
+  author    = {Corbet, Jonathan},
+  howpublished = {Linux Weekly News, \url{https://lwn.net/Articles/925371/}},
+  year      = {2023}
+}
+
+@misc{molnar_cfs_2007,
+  author       = {Molnar, Ingo},
+  title        = {sched: introduce {CFS}, the {C}ompletely {F}air {S}cheduler},
+  howpublished = {Linux kernel commit \texttt{bf0f6f24a1ec}, merged into v2.6.23},
+  year         = {2007},
+  note         = {See \texttt{kernel/sched/fair.c} and \texttt{Documentation/scheduler/sched-design-CFS.txt}.}
+}
+
+@misc{zijlstra_eevdf_lag_2023,
+  author       = {Zijlstra, Peter},
+  title        = {sched/fair: {A}dd lag based placement},
+  howpublished = {Linux kernel commit \texttt{86bfbb7ce4f6}, merged into v6.6},
+  year         = {2023},
+  note         = {Re-frames placement in terms of EEVDF lag instead of CFS \texttt{vruntime} offset.}
+}
+
+@misc{zijlstra_eevdf_latency_2023,
+  author       = {Zijlstra, Peter},
+  title        = {sched/fair: {A}dd latency\_offset},
+  howpublished = {Linux kernel commit \texttt{147f3efaa241}, merged into v6.6},
+  year         = {2023},
+  note         = {Exposes per-task latency hints to the EEVDF deadline computation.}
+}
+
+@misc{zijlstra_eevdf_default_2023,
+  author       = {Zijlstra, Peter},
+  title        = {sched/eevdf: {R}eplace {CFS} with {EEVDF} as default scheduler},
+  howpublished = {Linux kernel commit \texttt{e8f331bcc270}, merged into v6.6 (Oct.\ 2023)},
+  year         = {2023}
+}
+
+@misc{zijlstra_lkml_2023,
+  author       = {Zijlstra, Peter},
+  title        = {{[PATCH 00/15]} sched: {EEVDF} using latency-nice},
+  howpublished = {LKML thread \texttt{20230531115839.GA15915@hirez.programming.kicks-ass.net}},
+  year         = {2023}
+}
+
+% ---------------------------------------------------------------------------
+% Workloads / traces / measurement methodology
+% ---------------------------------------------------------------------------
+
+@inproceedings{shen2015bitbrains,
+  title     = {Statistical Characterization of Business-Critical Workloads Hosted in Cloud Datacenters},
+  author    = {Shen, Siqi and van Beek, Vincent and Iosup, Alexandru},
+  booktitle = {Proceedings of the 15th IEEE/ACM International Symposium on Cluster, Cloud and Grid Computing (CCGRID)},
+  pages     = {465--474},
+  year      = {2015}
+}
+
+@misc{gwa_t_12,
+  author       = {{Grid Workloads Archive}},
+  title        = {{GWA-T-12}: {Bitbrains} {VM} Workload Trace},
+  howpublished = {\url{http://gwa.ewi.tudelft.nl/datasets/gwa-t-12-bitbrains}},
+  year         = {2015}
+}
+
+@inproceedings{reiss2012google,
+  title     = {Heterogeneity and Dynamicity of Clouds at Scale: {Google} Trace Analysis},
+  author    = {Reiss, Charles and Tumanov, Alexey and Ganger, Gregory R. and Katz, Randy H. and Kozuch, Michael A.},
+  booktitle = {Proceedings of the 3rd ACM Symposium on Cloud Computing (SoCC)},
+  year      = {2012}
+}
+
+@article{harchol1997,
+  title     = {Exploiting Process Lifetime Distributions for Dynamic Load Balancing},
+  author    = {Harchol-Balter, Mor and Downey, Allen B.},
+  journal   = {ACM Transactions on Computer Systems},
+  volume    = {15},
+  number    = {3},
+  pages     = {253--285},
+  year      = {1997}
+}
+
+% ---------------------------------------------------------------------------
+% Multi-core / SMP scheduling background
+% ---------------------------------------------------------------------------
+
+@article{blumofe1999,
+  title   = {Scheduling Multithreaded Computations by Work Stealing},
+  author  = {Blumofe, Robert D. and Leiserson, Charles E.},
+  journal = {Journal of the ACM},
+  volume  = {46},
+  number  = {5},
+  pages   = {720--748},
+  year    = {1999}
+}
+
+@inproceedings{li2007smp,
+  title     = {Efficient Operating System Scheduling for Performance-Asymmetric Multi-Core Architectures},
+  author    = {Li, Tong and Baumberger, Dan and Koufaty, David and Hahn, Scott},
+  booktitle = {Proceedings of the 2007 ACM/IEEE Conference on Supercomputing (SC)},
+  year      = {2007}
+}
+
+@misc{rb_cached_2017,
+  author       = {{Linux kernel community}},
+  title        = {rbtree: cache leftmost node internally (\texttt{struct rb\_root\_cached})},
+  howpublished = {Linux kernel commit \texttt{cd9e6112b00f}, \texttt{lib/rbtree.c}},
+  year         = {2017}
+}

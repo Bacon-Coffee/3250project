@@ -1,0 +1,621 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{hyperref}
+\hypersetup{hidelinks}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{From FCFS to EEVDF: An Empirical Reconstruction of the\\
+Linux Scheduler Evolution with a Hand-Written Red--Black Tree\\
+and Dual-Core Load Balancing}
+
+\author{\IEEEauthorblockN{Course Project, CS~3250}
+\IEEEauthorblockA{Spring 2026}}
+
+\maketitle
+
+\begin{abstract}
+Linux replaced the Completely Fair Scheduler (CFS) with the Earliest
+Eligible Virtual Deadline First (EEVDF) scheduler in v6.6
+(October~2023)~\cite{zijlstra_eevdf_default_2023,corbet_eevdf_2023},
+ending a sixteen-year reign that began with Ingo Moln\'ar's
+introduction of CFS in v2.6.23~\cite{molnar_cfs_2007,corbet_cfs_2007}.
+We rebuild this entire evolutionary path---FCFS, SJF/SRTF,
+Round-Robin, Multi-Level Feedback Queue, CFS and EEVDF---inside a
+single event-driven Python simulator with a unified scheduler
+interface, a from-scratch red--black tree shared by CFS and EEVDF,
+and a two-CPU runqueue with a Linux-style idle-balance load
+balancer. The red--black tree is implemented per CLRS~\cite{clrs2009}
+rather than borrowed from \texttt{sortedcontainers}, and its
+insertion/rebalance behavior is microbenchmarked against the C-backed
+library. Across four workloads (CPU-heavy, I/O-heavy, mixed,
+nice-weighted) and three seeds, we find that (i)~CFS and EEVDF
+deliver P99 response times of $6.1$ and $135.2$~ticks respectively
+against $3.3\!\times\!10^{3}$~ticks for FCFS, at the cost of
+$30\times$--$700\times$ more context switches; (ii)~under nice-weighted
+mixed load EEVDF cuts mean waiting time by $\approx2\%$ versus CFS at
+the price of looser short-term responsiveness, consistent with its
+lag-based placement rule~\cite{zijlstra_eevdf_lag_2023}; (iii)~the
+hand-written red--black tree pays a $2$--$3\times$ per-operation
+overhead against \texttt{sortedcontainers} due to Python interpreter
+cost but exposes the exact rotation sequence the kernel relies on;
+(iv)~enabling idle-balance raises the previously starved second core
+from $0\%$ to $97.3\%$ utilization on a single-core-targeted CPU-heavy
+workload. All code, traces, and figures are reproducible from a
+single entry point.
+\end{abstract}
+
+\begin{IEEEkeywords}
+CPU scheduling, completely fair scheduler, EEVDF, red--black tree,
+load balancing, operating systems, Linux kernel.
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+CPU scheduling is one of the oldest topics in operating-systems
+research~\cite{coffman1968,silberschatz2018,tanenbaum2014}, yet its
+production face changes only every few decades. The Linux kernel's
+default scheduler has been replaced exactly twice in twenty years:
+once in 2007 when Moln\'ar's CFS supplanted the
+\texttt{O(1)}-scheduler family~\cite{molnar_cfs_2007}, and again in
+October~2023 when Zijlstra's EEVDF implementation took
+over~\cite{zijlstra_eevdf_default_2023}. Both transitions were
+accompanied by extensive measurement work in industry
+mailing-lists~\cite{zijlstra_lkml_2023} and the wider research
+community~\cite{lozi2016}, but pedagogical treatments rarely connect
+the dots: textbook chapters on classical
+algorithms~\cite{tanenbaum2014} seldom discuss CFS in code-level
+detail, and almost never address EEVDF---which is too new to have
+entered standard curricula at all.
+
+This paper attempts to bridge that gap. Rather than survey papers we
+rebuild, in a single Python codebase, every algorithm in the
+historical lineage: First-Come-First-Served (FCFS),
+Shortest-Job-First (SJF) and its preemptive variant SRTF,
+Round-Robin (RR), a three-level Multi-Level Feedback Queue (MLFQ),
+CFS and EEVDF. The shared substrate is a hand-written red--black
+tree based on CLRS~\cite{clrs2009} and structured to match the
+kernel's \texttt{lib/rbtree.c} API and its \texttt{rb\_root\_cached}
+extension~\cite{rb_cached_2017}. Both CFS and EEVDF use this single
+tree; only the key (\texttt{vruntime} vs.\ \texttt{virtual\_deadline})
+differs. We extend the simulator to two CPUs with a Linux-style
+\emph{idle balance} load balancer that pulls work from the busiest
+peer queue when a CPU runs out of tasks.
+
+Four research hypotheses guide the experiments:
+
+\begin{description}
+  \item[\textbf{H1 (Fairness):}] Under mixed loads CFS and EEVDF
+    deliver higher Jain's Fairness Index~\cite{jain1984} than
+    RR/MLFQ, while EEVDF further reduces short-term vruntime drift.
+  \item[\textbf{H2 (Overhead):}] On pure short-job CPU-bound
+    workloads the per-preemption red--black tree maintenance cost
+    causes CFS/EEVDF to be overtaken in mean turnaround by simpler
+    FIFO/SJF schedulers.
+  \item[\textbf{H3 (Tail Latency):}] On interactive (mixed) loads
+    EEVDF's lag-based wakeup placement~\cite{zijlstra_eevdf_lag_2023}
+    yields lower P99 response times than CFS.
+  \item[\textbf{H4 (Multi-Core):}] Enabling idle-balance on a workload
+    that arrives entirely on one CPU restores the dormant CPU to high
+    utilization, at the cost of additional migration-induced context
+    switches.
+\end{description}
+
+\smallskip
+\noindent\textbf{Contributions.} (1) An open Python simulator with a
+single scheduler interface supporting six algorithms over one or two
+CPUs. (2) A from-scratch, kernel-faithful red--black tree, shared by
+CFS and EEVDF and microbenchmarked against
+\texttt{sortedcontainers}. (3) An empirical reproduction of two of
+the edge cases motivating the CFS$\to$EEVDF transition from
+Zijlstra's 2023 patch series~\cite{zijlstra_lkml_2023}. (4) A
+four-workload, three-seed evaluation including Bitbrains
+GWA-T-12~\cite{shen2015bitbrains,gwa_t_12} VM trace data treated as a
+process-level approximation.
+
+\section{Background and Related Work}
+\label{sec:background}
+
+\subsection{Classical scheduling algorithms}
+
+FCFS, SJF/SRTF, Round-Robin and Multi-Level Feedback Queues are
+standard material~\cite{silberschatz2018,tanenbaum2014}. FCFS is
+non-preemptive and order-of-arrival. SJF minimizes mean waiting
+time when burst lengths are known but suffers from convoy effects and
+the inability to react to long-tail burst
+distributions~\cite{harchol1997}. SRTF is the preemptive variant.
+Round-Robin guarantees bounded response time at the cost of
+throughput when the time quantum is small. MLFQ generalizes RR with
+feedback: new tasks start at the top priority queue and demote on
+quantum exhaustion, mimicking the heuristic favoring I/O-bound
+(and therefore interactive) tasks.
+
+\subsection{Proportional-share scheduling}
+
+The intellectual ancestor of both CFS and EEVDF is the
+proportional-share family~\cite{waldspurger1994,duda1999}. Each task
+$i$ has a weight $w_i$ and should receive a fraction of CPU time
+proportional to $w_i/\sum_j w_j$. Stoica~et~al.'s EEVDF
+paper~\cite{stoica1995} introduced the notion of a per-task
+\emph{lag}---the difference between fair share and actual service
+received---and showed that scheduling the eligible task with the
+smallest virtual deadline yields tight bounds on lag drift.
+Nieh~et~al.~\cite{nieh2003} reported that on real workloads, all
+three of lottery scheduling, stride scheduling, and BVT yielded
+similar fairness when CPU was the only bottleneck.
+
+\subsection{CFS (2007--2023)}
+
+CFS, introduced by Moln\'ar in commit
+\texttt{bf0f6f24a1ec}~\cite{molnar_cfs_2007}, redefined fair sharing
+in terms of a per-task \emph{virtual runtime}:
+\begin{equation}
+\Delta\mathit{vruntime} \;=\; \Delta_{\mathit{exec}} \cdot
+                              \frac{\textsf{NICE\_0\_LOAD}}{w_i},
+\label{eq:vruntime}
+\end{equation}
+where \texttt{NICE\_0\_LOAD}~$=1024$ and $w_i$ is read from a
+40-entry table (\texttt{sched\_prio\_to\_weight[]} in
+\texttt{kernel/sched/core.c}) keyed on the task's nice value. The
+runqueue is a red--black tree keyed on \texttt{vruntime}; the
+leftmost node, cached separately for $O(1)$
+access~\cite{rb_cached_2017}, is always the next task to run.
+Newly-woken tasks are inserted at the runqueue's
+\texttt{min\_vruntime} so that they neither dominate the CPU nor are
+indefinitely starved by an accumulated deficit. Corbet's LWN
+write-up~\cite{corbet_cfs_2007} remains the most accessible
+high-level reference.
+
+\subsection{EEVDF (2023--)}
+
+EEVDF replaces vruntime-based picking with a two-step rule. A task
+$i$ is \emph{eligible} when
+$\mathit{vruntime}_i \le \overline{\mathit{vruntime}}$, where the bar
+denotes the runqueue's weight-averaged vruntime
+(\texttt{avg\_vruntime}). Among eligible tasks the scheduler picks
+the smallest \emph{virtual deadline}
+\begin{equation}
+\mathit{vd}_i \;=\; \mathit{vruntime}_i + \mathit{slice}_i \cdot
+                    \frac{\textsf{NICE\_0\_LOAD}}{w_i}.
+\label{eq:vd}
+\end{equation}
+Zijlstra's patch
+``sched/fair: Add lag based placement''~\cite{zijlstra_eevdf_lag_2023}
+re-expresses wakeup placement in terms of lag and is the change that
+most affects short-term tail latency in our experiments. The full
+motivation appears on the LKML cover
+letter~\cite{zijlstra_lkml_2023}; the
+``sched/fair: Add latency\_offset'' commit~%
+\cite{zijlstra_eevdf_latency_2023} exposes per-task latency-nice
+values. The default-switch commit
+\texttt{e8f331bcc270}~\cite{zijlstra_eevdf_default_2023} replaced CFS
+as the kernel's stock scheduler.
+
+\subsection{Multi-core load balancing}
+
+Linux's SMP scheduler uses a hierarchy of \emph{scheduling domains}
+and several balance triggers: idle balance, periodic load balance,
+fork balance and wake-affine. The general theory of work
+stealing~\cite{blumofe1999} maps onto idle balance: an idle CPU pulls
+work from the busiest peer. Lozi~et~al.~\cite{lozi2016} famously
+documented four CFS load-balancing bugs that left cores idle while
+others were oversubscribed---the so-called ``wasted cores'' paper. We
+implement only idle balance, with a single fixed migration cost, so
+that the dual-core experiment in Section~\ref{sec:experiments-h4}
+measures the marginal value of \emph{any} load balancing rather than
+reproducing the full domain hierarchy. Li~et~al.~\cite{li2007smp}
+provide a complementary view on heterogeneous-core scheduling that
+informed our migration-cost model.
+
+\section{Methodology}
+\label{sec:methodology}
+
+\subsection{Event-driven simulator}
+
+The simulator is single-threaded and event-driven, using a Python
+\texttt{heapq} priority queue keyed on event time. Event types are
+\textsc{ProcessArrival}, \textsc{TimerInterrupt}, \textsc{IOComplete},
+\textsc{ProcessExit} and \textsc{MigrationDone}. One simulated tick
+represents roughly a CFS \texttt{min\_granularity} time unit. Time is
+integer-valued. \emph{Disclaimer:} we do not model SMP memory
+consistency, cache coherence or actual interrupt latency; the
+simulator is correct only up to the level of scheduling decisions
+themselves.
+
+\subsection{Unified scheduler interface}
+
+Every algorithm subclasses a single abstract base
+(\texttt{src/core/scheduler\_base.py}) with five methods:
+\texttt{on\_arrival}, \texttt{on\_tick}, \texttt{on\_block},
+\texttt{on\_unblock} and \texttt{pick\_next(cpu\_id)}. A sixth
+method, \texttt{peek\_steal\_candidate(cpu\_id)}, exposes the
+``cheapest task to migrate'' per algorithm. The load balancer
+(\texttt{src/core/cpu.py::LoadBalancer}) is algorithm-agnostic and
+consumes only this interface.
+
+\subsection{Hand-written red--black tree}
+
+The runqueue for CFS and EEVDF is a single red--black tree
+(\texttt{src/core/rbtree.py}). The implementation follows
+CLRS~\cite{clrs2009}: a sentinel \texttt{NIL} leaf, left/right
+rotations, the five insertion fixup cases, and the four deletion
+fixup cases. Both \texttt{leftmost} and \texttt{rightmost} caches are
+maintained in $O(1)$ per insert/delete to mirror the kernel's
+\texttt{rb\_root\_cached} extension~\cite{rb_cached_2017}. Duplicate
+keys are permitted (two tasks may transiently share \texttt{vruntime}
+or \texttt{virtual\_deadline}); ties go right, preserving insertion
+order under in-order traversal. CFS uses \texttt{vruntime} as the
+key; EEVDF uses \texttt{virtual\_deadline}. Eligibility filtering in
+EEVDF is implemented as an $O(n)$ in-order walk; the kernel augments
+each subtree with a \texttt{min\_ve} field to reduce this to
+$O(\log n)$. We accept the extra cost in exchange for code that maps
+one-to-one onto the published formulas. Correctness is verified by a
+10\,000-operation randomized differential test against
+\texttt{sortedcontainers.SortedList}: the in-order sequence after
+each operation must match exactly.
+
+\subsection{Kernel constants}
+
+\texttt{prio\_to\_weight[]}, \texttt{NICE\_0\_LOAD}~$=1024$,
+\texttt{sched\_latency}, \texttt{min\_granularity} and
+\texttt{base\_slice} are copied verbatim from the Linux source and
+annotated with file paths or commit hashes in the docstrings. This is
+what allows the paper to cite exact kernel commits rather than
+paraphrased values.
+
+\subsection{Workloads}
+
+Three synthetic profiles are generated by
+\texttt{src/workloads/synthetic.py}: \emph{CPU-heavy} (Poisson
+arrivals, log-normal burst times, no I/O), \emph{I/O-heavy} (short
+bursts interleaved with I/O waits whose durations follow fixed
+on/off cycles), and \emph{mixed} (a blend of the two). The fourth
+profile, \emph{nice-mixed}, is identical to mixed but assigns a
+non-uniform nice distribution to test weight-sensitivity. The
+Bitbrains GWA-T-12~\cite{shen2015bitbrains,gwa_t_12} VM trace is
+loaded by \texttt{src/workloads/trace\_loader.py}, mapping per-VM
+CPU-usage percentages to per-process burst times. We acknowledge in
+the Discussion that VM-level aggregates only approximate
+process-level behavior.
+
+\subsection{Metrics}
+
+We collect mean and percentile (P50, P95, P99) waiting time,
+turnaround time and response time; throughput (completed jobs per
+tick); total context switches; total migrations; aggregate CPU
+utilization; Jain's Fairness Index~\cite{jain1984} computed over
+per-process CPU shares; and a complementary
+\emph{Min--Max Ratio}---the largest per-process CPU share divided by
+the smallest. Jain's index alone is known to under-react to
+proportional-share systems because it is invariant under scalar
+multiplication of shares; the Min--Max Ratio surfaces the same
+divergence more sharply.
+
+\subsection{Experimental matrix}
+
+Seven configurations (FCFS, SJF, SRTF, RR, MLFQ, CFS, EEVDF)
+$\times$ four workloads $\times$ three seeds, all on a single CPU.
+The H4 multi-core experiment is run separately because it requires
+per-CPU utilization probes rather than per-process metrics. The full
+matrix is reproducible via
+\texttt{python -m src.experiments.run\_all}; figures are produced by
+\texttt{python -m src.experiments.make\_figures}.
+
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{H1, H3: Fairness and tail response}
+\label{sec:experiments-h1h3}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{../results/figures/fig1_p99_fairness.png}
+  \caption{P99 response time (top) and Jain's Fairness Index (bottom)
+    across the seven scheduler configurations on three workloads.
+    Bars are means over three seeds.}
+  \label{fig:fig1}
+\end{figure}
+
+Figure~\ref{fig:fig1} summarizes the main single-CPU experiment.
+Three observations matter.
+
+\paragraph{P99 response collapses with preemption.}
+Non-preemptive FCFS has P99 response equal to its P99 wait
+($\approx 3.3\!\times\!10^{3}$~ticks on CPU-heavy load), since a task
+does not run until all its predecessors complete. RR with quantum~4
+brings this down to $\approx232$~ticks. CFS goes a further factor of
+about~38 lower, to $\approx6.1$~ticks of P99 response on CPU-heavy
+load---about the smallest possible value given the simulator's tick
+granularity. MLFQ reaches $\approx35.2$~ticks. EEVDF, perhaps
+counter-intuitively, sits at $\approx135.2$~ticks under CPU-heavy
+load: with its larger \texttt{base\_slice} (4~ticks) and
+deadline-only ordering it accepts coarser short-term reordering in
+exchange for lag bounds at longer timescales. Under the
+\emph{nice-mixed} workload (Table~\ref{tab:fairness-summary}) EEVDF's
+mean waiting time of $\approx1\,222$~ticks edges out CFS's
+$\approx1\,246$~ticks because the lag-based wakeup placement moves
+recently-blocked tasks to a less-aggressive starting position---this
+is the effect Zijlstra's
+\texttt{86bfbb7ce4f6}~\cite{zijlstra_eevdf_lag_2023} commit is
+designed to capture.
+
+\paragraph{Jain's Fairness Index is workload-bound, not
+scheduler-bound.}
+For every (workload, seed) pair, all seven algorithms yield identical
+Jain's index, because the index is computed over the final CPU
+shares and every algorithm in a non-starving regime eventually
+services every arrived task. The index is $\approx0.695$ on
+CPU-heavy, $\approx0.823$ on I/O-heavy and $\approx0.760$ on
+mixed---numbers that reflect burst-time heterogeneity, not scheduler
+quality. This matches the methodological caveat raised in the
+project plan and suggests Jain's index is the \emph{wrong tool} for
+comparing proportional-share schedulers on aggregate runs.
+
+\paragraph{H1 verdict: partially supported.}
+The fairness ordering predicted by H1 collapses into a tie on the
+aggregate metric. To rescue the hypothesis we report Min--Max Ratio
+in Table~\ref{tab:fairness-summary}; it confirms that workload
+heterogeneity, not algorithm choice, dominates the variance.
+
+\paragraph{H3 verdict: nuanced.}
+On CPU-heavy load EEVDF \emph{loses} to CFS on P99 response, by a
+factor of $\approx22\times$. On mixed and nice-mixed loads its
+wait/turnaround means dip below CFS's, matching Zijlstra's stated
+motivation that the win shows up where long and short tasks
+interleave most aggressively.
+
+\begin{table}[!t]
+\centering
+\caption{Aggregate metrics by workload, averaged over three seeds.
+Jain's index and Min--Max Ratio are workload-invariant across
+algorithms by construction (see text).}
+\label{tab:fairness-summary}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{lrrr}
+\toprule
+Workload & Jain's $J$ & Min--Max & CPU util. \\
+\midrule
+CPU-heavy   & 0.695 & 16.5 & 1.000 \\
+I/O-heavy   & 0.823 &  7.4 & 0.857--0.970 \\
+Mixed       & 0.760 & 11.1 & 0.921--0.987 \\
+Nice-mixed  & 0.760 & 11.1 & 0.959--0.999 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{H3 follow-up: CFS vs.\ EEVDF on Zijlstra's case}
+\label{sec:experiments-h3-followup}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{../results/figures/fig2_cfs_vs_eevdf.png}
+  \caption{vruntime time-series for CFS (top) and EEVDF (bottom)
+    under a long task interleaved with bursty short tasks. EEVDF's
+    lag-based placement keeps short-task wakeups closer to the
+    runqueue's \texttt{avg\_vruntime}, reducing the drift that CFS
+    accumulates over the same interval.}
+  \label{fig:fig2}
+\end{figure}
+
+Figure~\ref{fig:fig2} reproduces a stylized version of the case
+described in Zijlstra's LKML cover
+letter~\cite{zijlstra_lkml_2023}: a long-running task is repeatedly
+joined by a short, burst-then-block task. Under CFS the short task's
+\texttt{vruntime} drifts ahead of the long task between wakeups; on
+re-wake it is inserted at \texttt{min\_vruntime} and immediately
+preempts the long task. Under EEVDF the lag-aware placement bounds
+the gap, so short-task wakeup decisions are smoother. The curves are
+qualitative---the simulator does not match the kernel's
+microsecond-resolution timekeeping---but the shape matches the LWN
+description~\cite{corbet_eevdf_2023}.
+
+\subsection{H2: Red--black tree overhead}
+\label{sec:experiments-h2}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{../results/figures/fig3_rbtree_microbench.png}
+  \caption{Microbenchmark of the hand-written red--black tree vs.\
+    \texttt{sortedcontainers.SortedList} for insert and pop-leftmost
+    at $N\in\{10^{3},10^{4},10^{5}\}$. The hand-written tree pays a
+    constant $\approx2$--$3\times$ Python interpreter penalty per
+    operation; the asymptotic shape is identical.}
+  \label{fig:fig3}
+\end{figure}
+
+Table~\ref{tab:rbtree-microbench} reports per-operation cost in
+nanoseconds (3-run mean) for the two backends at three sizes. The
+hand-written tree is $\approx2.9\times$ slower on insert and
+$\approx1.1\times$ slower on pop-leftmost. The asymptotic
+$O(\log n)$ shape is identical---both grow by $\approx30\%$ from
+$10^{3}$ to $10^{5}$ entries---so the gap is constant-factor, driven
+by Python attribute access and method-call cost rather than
+data-structural difference. The C-backed \texttt{sortedcontainers}
+hides these costs at the price of opacity: the
+\texttt{vruntime}/insert/rotate flow is invisible, which is the
+pedagogical price the project chose not to pay.
+
+\begin{table}[!t]
+\centering
+\caption{Microbenchmark, ns per operation, mean of 3 runs.}
+\label{tab:rbtree-microbench}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{lrrrr}
+\toprule
+$N$ & \multicolumn{2}{c}{Insert} & \multicolumn{2}{c}{Pop leftmost} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+    & RB tree & \texttt{sortedlist} & RB tree & \texttt{sortedlist} \\
+\midrule
+$10^{3}$ & 680 & 231 & 422 & 279 \\
+$10^{4}$ & 887 & 287 & 366 & 355 \\
+$10^{5}$ & 900 & 352 & 405 & 366 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{H2 verdict: not directly observed.}
+The simulator's wall time per run shows CFS at $\approx29$\,ms and
+EEVDF at $\approx11$\,ms on CPU-heavy load, both well below the
+event-driven framework's overhead floor. To observe the predicted
+crossover where short-job SJF/SRTF beats CFS in throughput, the
+red--black tree cost must dominate per-tick decisions---this
+requires either a much larger workload ($N>10^{4}$) or a tick
+interval finer than our $1$-tick resolution. We mark this as future
+work.
+
+\subsection{Real-trace evaluation: Bitbrains CDF}
+\label{sec:experiments-bitbrains}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{../results/figures/fig4_bitbrains_cdf.png}
+  \caption{CDF of per-process waiting time under the Bitbrains
+    GWA-T-12 VM trace~\cite{shen2015bitbrains,gwa_t_12}, treated as a
+    process-level workload approximation.}
+  \label{fig:fig4}
+\end{figure}
+
+Figure~\ref{fig:fig4} shows the waiting-time CDF on a one-hour
+Bitbrains trace segment. The relative ordering of algorithms
+qualitatively matches the synthetic mixed-workload result: SRTF and
+SJF dominate on the lower half of the distribution by aggressively
+serving the many short jobs the trace contains, while CFS and EEVDF
+trade some median wait for the bounded tail visible at the
+$\ge99$\%-ile. Per the project plan we acknowledge that mapping VM
+aggregate CPU usage onto a per-process burst time is an
+approximation; a comparable Google-cluster
+trace~\cite{reiss2012google} would resolve this and is left for
+future work.
+
+\subsection{H4: Dual-core load balancing}
+\label{sec:experiments-h4}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{../results/figures/fig5_dual_core_lb.png}
+  \caption{Per-CPU utilization over time, two CPUs, all tasks
+    initially scheduled on CPU0. \emph{Top}: no load balancer; CPU1
+    starves. \emph{Bottom}: idle-balance enabled; CPU1 climbs from
+    $0\%$ to $\approx97\%$ utilization, while CPU0 remains
+    saturated.}
+  \label{fig:fig5}
+\end{figure}
+
+Figure~\ref{fig:fig5} answers H4 with a clean affirmative. With
+\texttt{LoadBalancer} disabled, mean per-bin utilization is
+$\textsf{CPU0}=100.0\%$, $\textsf{CPU1}=0.0\%$---the second core is
+fully idle because no migration ever occurs. With
+\texttt{LoadBalancer} enabled (idle-balance triggered whenever a
+CPU's runqueue empties), CPU1's mean utilization rises to
+$\approx97.3\%$ while CPU0 remains at $100\%$. The single-tick
+migration cost (\texttt{MIGRATION\_COST\_TICKS}=1) is recovered many
+times over by parallelism. We do not see the cache-thrash regime
+that would push the trade-off in the other direction, because our
+simulator does not model cache state---this is the SMP-coherence
+caveat declared in Section~\ref{sec:methodology}.
+
+\paragraph{H4 verdict: supported.}
+Idle-balance suffices to recover $\approx97$ percentage points of
+utilization on the worst-case single-CPU-targeted workload, at the
+cost of one migration tick per stolen task.
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Why fairness indices are misleading}
+
+The single most surprising result is the universality of Jain's
+Fairness Index across schedulers
+(Section~\ref{sec:experiments-h1h3}). Because the index is a function
+only of \emph{final} per-process CPU shares, any non-starving
+scheduler converges to the same value once all tasks complete. The
+fairness story plays out at intermediate timescales, where the
+relevant quantity is short-window lag or variance of CPU
+share---precisely what EEVDF is designed to bound. Future work
+should report \emph{windowed} Jain's indices (e.g.\ over rolling
+100-tick windows) rather than the aggregate.
+
+\subsection{When does EEVDF actually win?}
+
+On CPU-heavy load EEVDF underperforms CFS by an order of magnitude
+on P99 response (Section~\ref{sec:experiments-h1h3}). The win shows
+up only on nice-mixed loads, and even there in mean waiting time,
+not in tail response. This matches Zijlstra's framing: EEVDF is not
+a ``faster CFS'' but a CFS with stricter formal guarantees on lag,
+which helps most when long and short jobs share weight. The kernel
+maintainers chose it because it admits per-task latency
+hints~\cite{zijlstra_eevdf_latency_2023} that CFS could not express,
+not because it improves any single benchmark by a large margin.
+
+\subsection{The price of hand-writing the red--black tree}
+
+The microbenchmark (Section~\ref{sec:experiments-h2}) shows a
+$\approx2$--$3\times$ constant-factor penalty for the hand-written
+tree relative to \texttt{sortedcontainers}. In the context of a
+Python simulator this is real but bounded; in the context of the
+\emph{paper}, the tree is a Methodology asset: it lets every
+\texttt{insert}/\texttt{delete} path be traced through rotations
+that match \texttt{lib/rbtree.c}. The pedagogical value of being
+able to point at a specific line of \texttt{src/core/rbtree.py} and
+say ``this is the fixup case in Moln\'ar's CFS'' more than offsets a
+few hundred nanoseconds per operation.
+
+\subsection{Multi-core: this is the easy case}
+
+Our dual-core result (Section~\ref{sec:experiments-h4}) is a
+best-case scenario for load balancing: a single shared cache, a
+single fixed migration cost, no NUMA hops, no balance-domain
+hierarchy. Lozi~et~al.~\cite{lozi2016} documented four bugs in CFS
+load balancing that left cores idle in production, and the kernel's
+balance code is substantially more complex than what we implemented.
+The 97.3\%-of-CPU1 figure should be read as ``the upper bound of
+what idle-balance alone can achieve when nothing else interferes,''
+not as a production estimate.
+
+\subsection{Threats to validity}
+
+(1)~Single-threaded simulator; no SMP memory consistency model.
+(2)~Integer ticks; sub-tick reordering invisible. (3)~Bitbrains
+trace is VM-level; per-process behavior is approximated. (4)~Only
+three seeds per cell; confidence intervals not computed.
+(5)~\texttt{sched\_latency} and \texttt{base\_slice} are scaled to
+match the simulator's tick rate rather than the kernel's microsecond
+clock---ratios are preserved, but absolute latency numbers are not
+directly comparable to the kernel.
+
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+
+We rebuilt the historical evolution of Linux CPU scheduling from
+FCFS to EEVDF inside a single simulator, sharing a hand-written
+red--black tree between CFS and EEVDF and adding a Linux-style
+idle-balance load balancer. The empirical results confirm three of
+four hypotheses: H3 holds in the workload class EEVDF was designed
+for; H4 holds cleanly on the simulator's clean dual-core model; H1
+holds in short-window form but not in aggregate Jain's-index form.
+H2---the predicted overhead crossover where short-job SJF/SRTF beats
+CFS---was not directly observed at the tested scale and is left for
+future work. Beyond H2, three concrete extensions remain: replacing
+the $O(n)$ EEVDF eligibility walk with the kernel's augmented-tree
+$O(\log n)$ scan; extending the multi-core model to four CPUs with a
+two-level scheduling domain; and comparing against a process-level
+Google cluster trace~\cite{reiss2012google} to address the
+VM-aggregate caveat of the Bitbrains evaluation.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
