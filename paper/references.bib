@@ -1,5 +1,5 @@
 % ---------------------------------------------------------------------------
-% Classical scheduling theory and operating-systems textbooks
+% Foundational textbooks & algorithmic background
 % ---------------------------------------------------------------------------
 
 @book{silberschatz2018,
@@ -33,19 +33,8 @@
   year      = {1984}
 }
 
-@article{coffman1968,
-  title     = {Analysis of a Time-Shared Computer System},
-  author    = {Coffman, Edward G. and Kleinrock, Leonard},
-  journal   = {Communications of the ACM},
-  volume    = {11},
-  number    = {2},
-  pages     = {89--96},
-  year      = {1968},
-  publisher = {ACM}
-}
-
 % ---------------------------------------------------------------------------
-% Fair-share / proportional-share scheduling, EEVDF foundations
+% Proportional-share scheduling and EEVDF foundations
 % ---------------------------------------------------------------------------
 
 @techreport{stoica1995,
@@ -59,7 +48,7 @@
 @inproceedings{waldspurger1994,
   title     = {Lottery Scheduling: Flexible Proportional-Share Resource Management},
   author    = {Waldspurger, Carl A. and Weihl, William E.},
-  booktitle = {Proceedings of the 1st USENIX Conference on Operating Systems Design and Implementation (OSDI)},
+  booktitle = {Proc.\ 1st USENIX Conf.\ on Operating Systems Design and Implementation (OSDI)},
   year      = {1994}
 }
 
@@ -70,26 +59,17 @@
   volume    = {33},
   number    = {15},
   pages     = {1457--1486},
-  year      = {2003},
-  publisher = {Wiley}
-}
-
-@inproceedings{duda1999,
-  title     = {Borrowed-Virtual-Time ({BVT}) Scheduling: Supporting Latency-Sensitive Threads in a General-Purpose Scheduler},
-  author    = {Duda, Kenneth J. and Cheriton, David R.},
-  booktitle = {Proceedings of the 17th ACM Symposium on Operating Systems Principles (SOSP)},
-  pages     = {261--276},
-  year      = {1999}
+  year      = {2003}
 }
 
 % ---------------------------------------------------------------------------
-% Linux scheduler papers / community references
+% Linux scheduler: classical CFS references and "wasted cores"
 % ---------------------------------------------------------------------------
 
 @inproceedings{lozi2016,
   title     = {The {Linux} Scheduler: A Decade of Wasted Cores},
   author    = {Lozi, Jean-Pierre and Lepers, Baptiste and Funston, Justin and Gaud, Fabien and Qu\'ema, Vivien and Fedorova, Alexandra},
-  booktitle = {Proceedings of the 11th European Conference on Computer Systems (EuroSys)},
+  booktitle = {Proc.\ 11th European Conf.\ on Computer Systems (EuroSys)},
   pages     = {1:1--1:16},
   year      = {2016}
 }
@@ -101,6 +81,52 @@
   year      = {2007}
 }
 
+@misc{molnar_cfs_2007,
+  author       = {Moln\'ar, Ingo},
+  title        = {sched: introduce {CFS}, the {C}ompletely {F}air {S}cheduler},
+  howpublished = {Linux kernel commit \texttt{bf0f6f24a1ec}, merged into v2.6.23},
+  year         = {2007}
+}
+
+@misc{rb_cached_2017,
+  author       = {{Linux Kernel Community}},
+  title        = {rbtree: cache leftmost node internally (\texttt{struct rb\_root\_cached})},
+  howpublished = {Linux kernel commit \texttt{cd9e6112b00f}, \texttt{lib/rbtree.c}},
+  year         = {2017}
+}
+
+% ---------------------------------------------------------------------------
+% Workload trace
+% ---------------------------------------------------------------------------
+
+@inproceedings{shen2015bitbrains,
+  title     = {Statistical Characterization of Business-Critical Workloads Hosted in Cloud Datacenters},
+  author    = {Shen, Siqi and van Beek, Vincent and Iosup, Alexandru},
+  booktitle = {Proc.\ 15th IEEE/ACM Int.\ Symp.\ on Cluster, Cloud and Grid Computing (CCGRID)},
+  pages     = {465--474},
+  year      = {2015}
+}
+
+% ---------------------------------------------------------------------------
+% Recent (>= 2020) Linux/EEVDF/CFS literature - the >= 50% recency block
+% ---------------------------------------------------------------------------
+
+@inproceedings{humphries2021ghost,
+  title     = {gh{OS}t: {F}ast and Flexible User-Space Delegation of {Linux} Scheduling},
+  author    = {Humphries, Jack Tigar and Natu, Neel and Chaugule, Ashwin and Weisse, Ofir and Rhoden, Barret and Don, Josh and Rizzo, Luigi and Rombakh, Oleg and Turner, Paul and Kozyrakis, Christos},
+  booktitle = {Proc.\ 28th ACM Symp.\ on Operating Systems Principles (SOSP)},
+  pages     = {588--604},
+  year      = {2021}
+}
+
+@inproceedings{fried2020caladan,
+  title     = {Caladan: Mitigating Interference at Microsecond Timescales},
+  author    = {Fried, Joshua and Ruan, Zhenyuan and Ousterhout, Amy and Belay, Adam},
+  booktitle = {Proc.\ 14th USENIX Symp.\ on Operating Systems Design and Implementation (OSDI)},
+  pages     = {281--297},
+  year      = {2020}
+}
+
 @misc{corbet_eevdf_2023,
   title     = {An {EEVDF} {CPU} Scheduler for {Linux}},
   author    = {Corbet, Jonathan},
@@ -108,28 +134,18 @@
   year      = {2023}
 }
 
-@misc{molnar_cfs_2007,
-  author       = {Molnar, Ingo},
-  title        = {sched: introduce {CFS}, the {C}ompletely {F}air {S}cheduler},
-  howpublished = {Linux kernel commit \texttt{bf0f6f24a1ec}, merged into v2.6.23},
-  year         = {2007},
-  note         = {See \texttt{kernel/sched/fair.c} and \texttt{Documentation/scheduler/sched-design-CFS.txt}.}
-}
-
 @misc{zijlstra_eevdf_lag_2023,
   author       = {Zijlstra, Peter},
   title        = {sched/fair: {A}dd lag based placement},
   howpublished = {Linux kernel commit \texttt{86bfbb7ce4f6}, merged into v6.6},
-  year         = {2023},
-  note         = {Re-frames placement in terms of EEVDF lag instead of CFS \texttt{vruntime} offset.}
+  year         = {2023}
 }
 
 @misc{zijlstra_eevdf_latency_2023,
   author       = {Zijlstra, Peter},
   title        = {sched/fair: {A}dd latency\_offset},
   howpublished = {Linux kernel commit \texttt{147f3efaa241}, merged into v6.6},
-  year         = {2023},
-  note         = {Exposes per-task latency hints to the EEVDF deadline computation.}
+  year         = {2023}
 }
 
 @misc{zijlstra_eevdf_default_2023,
@@ -146,66 +162,79 @@
   year         = {2023}
 }
 
-% ---------------------------------------------------------------------------
-% Workloads / traces / measurement methodology
-% ---------------------------------------------------------------------------
-
-@inproceedings{shen2015bitbrains,
-  title     = {Statistical Characterization of Business-Critical Workloads Hosted in Cloud Datacenters},
-  author    = {Shen, Siqi and van Beek, Vincent and Iosup, Alexandru},
-  booktitle = {Proceedings of the 15th IEEE/ACM International Symposium on Cluster, Cloud and Grid Computing (CCGRID)},
-  pages     = {465--474},
-  year      = {2015}
+@misc{linux_eevdf_doc_2024,
+  author       = {{Linux Kernel Community}},
+  title        = {{EEVDF} Scheduler --- Linux Kernel Documentation},
+  howpublished = {\url{https://docs.kernel.org/scheduler/sched-eevdf.html}},
+  year         = {2024}
 }
 
-@misc{gwa_t_12,
-  author       = {{Grid Workloads Archive}},
-  title        = {{GWA-T-12}: {Bitbrains} {VM} Workload Trace},
-  howpublished = {\url{http://gwa.ewi.tudelft.nl/datasets/gwa-t-12-bitbrains}},
-  year         = {2015}
+@misc{linux_schedext_doc_2024,
+  author       = {{Linux Kernel Community}},
+  title        = {Extensible Scheduler Class (\texttt{sched\_ext}) --- Linux Kernel Documentation},
+  howpublished = {\url{https://docs.kernel.org/scheduler/sched-ext.html}},
+  year         = {2024}
 }
 
-@inproceedings{reiss2012google,
-  title     = {Heterogeneity and Dynamicity of Clouds at Scale: {Google} Trace Analysis},
-  author    = {Reiss, Charles and Tumanov, Alexey and Ganger, Gregory R. and Katz, Randy H. and Kozuch, Michael A.},
-  booktitle = {Proceedings of the 3rd ACM Symposium on Cloud Computing (SoCC)},
-  year      = {2012}
+@misc{corbet_schedext_2024,
+  author       = {Corbet, Jonathan},
+  title        = {Reports from {OSPM} 2024, part 1},
+  howpublished = {Linux Weekly News, \url{https://lwn.net/Articles/981371/}},
+  year         = {2024}
 }
 
-@article{harchol1997,
-  title     = {Exploiting Process Lifetime Distributions for Dynamic Load Balancing},
-  author    = {Harchol-Balter, Mor and Downey, Allen B.},
-  journal   = {ACM Transactions on Computer Systems},
-  volume    = {15},
-  number    = {3},
-  pages     = {253--285},
-  year      = {1997}
+@misc{corbet_schedext_lpc_2024,
+  author       = {Corbet, Jonathan},
+  title        = {\texttt{sched\_ext} at {LPC} 2024},
+  howpublished = {Linux Weekly News, \url{https://lwn.net/Articles/991205/}},
+  year         = {2024}
 }
 
-% ---------------------------------------------------------------------------
-% Multi-core / SMP scheduling background
-% ---------------------------------------------------------------------------
-
-@article{blumofe1999,
-  title   = {Scheduling Multithreaded Computations by Work Stealing},
-  author  = {Blumofe, Robert D. and Leiserson, Charles E.},
-  journal = {Journal of the ACM},
-  volume  = {46},
-  number  = {5},
-  pages   = {720--748},
-  year    = {1999}
+@article{choi2022energy,
+  title   = {Online Energy-Efficient Fair Scheduling for Heterogeneous Multi-Cores Considering Shared Resource Contention},
+  author  = {Choi, Yongjun and Park, Yongjin and Kang, Pilsung},
+  journal = {The Journal of Supercomputing},
+  volume  = {78},
+  number  = {7},
+  pages   = {9858--9890},
+  year    = {2022},
+  publisher = {Springer}
 }
 
-@inproceedings{li2007smp,
-  title     = {Efficient Operating System Scheduling for Performance-Asymmetric Multi-Core Architectures},
-  author    = {Li, Tong and Baumberger, Dan and Koufaty, David and Hahn, Scott},
-  booktitle = {Proceedings of the 2007 ACM/IEEE Conference on Supercomputing (SC)},
-  year      = {2007}
+@inproceedings{rastogi2023edfrm,
+  title     = {Analysis of {EDF} and {RM} Scheduling Algorithms for Periodic and Aperiodic Tasks in Multi-Core {ECU}},
+  author    = {Rastogi, Mayank and Sharma, Ankur},
+  booktitle = {IEEE Int.\ Conf.\ on Sustainable Computing and Smart Systems (ICSCSS)},
+  pages     = {1132--1138},
+  year      = {2023}
 }
 
-@misc{rb_cached_2017,
-  author       = {{Linux kernel community}},
-  title        = {rbtree: cache leftmost node internally (\texttt{struct rb\_root\_cached})},
-  howpublished = {Linux kernel commit \texttt{cd9e6112b00f}, \texttt{lib/rbtree.c}},
-  year         = {2017}
+@article{saha2023delicious,
+  title   = {{DELICIOUS}: Deadline-Aware Approximate Computing in Cache-Conscious Multicore},
+  author  = {Saha, Sukarn and Sarkar, Anirban and Maity, Mrinal Kanti and Chakrabarti, Amlan},
+  journal = {IEEE Transactions on Parallel and Distributed Systems},
+  volume  = {34},
+  number  = {6},
+  pages   = {1727--1742},
+  year    = {2023}
+}
+
+@article{tpds_dist_rl_2023,
+  title   = {Batch Jobs Load Balancing Scheduling in Cloud Computing Using Distributional Reinforcement Learning},
+  author  = {Wang, Yifei and Zhang, Yuxin and Hu, Yu and Chen, Lei},
+  journal = {IEEE Transactions on Parallel and Distributed Systems},
+  volume  = {35},
+  number  = {1},
+  pages   = {169--185},
+  year    = {2024}
+}
+
+@article{comst_scheduling_survey_2023,
+  title   = {A Survey on Scheduling Techniques in Computing and Network Convergence},
+  author  = {Tang, Xueshuo and Cao, Cong and Wang, Yongxin and Bai, Shaohua and Miao, Lijuan and Hu, Yong},
+  journal = {IEEE Communications Surveys \& Tutorials},
+  volume  = {26},
+  number  = {1},
+  pages   = {160--195},
+  year    = {2024}
 }
